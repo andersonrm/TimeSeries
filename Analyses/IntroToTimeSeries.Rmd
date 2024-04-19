@@ -1,0 +1,632 @@
+---
+title: "Intro to Time Series"
+author: "Dr. Riley M. Anderson"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+graphics: yes
+output:
+  github_document:
+    toc: yes
+    toc_depth: 5
+    pandoc_args: --webtex
+  html_document:
+    keep_md: yes
+    theme: readable
+    mathjax: default
+  html_notebook:
+    code_folding: hide
+    theme: readable
+    mathjax: default
+  pdf_document:
+    toc: yes
+header-includes:
+  \usepackage{float}
+  \floatplacement{figure}{H}
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = F}
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Knitr Options
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Set root directory to the project directory
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+
+# Set default knitr options: 
+# Suppress warnings and messages, cache chunks, 
+#  set default figure size to 6x8 at 300 dpi, and save a png and pdf
+knitr::opts_chunk$set(warning = F, message = F, collapse = T, cache = T,
+    fig.height = 6, fig.width = 8, dpi = 300, # 6x8" @ 300dpi:1800x2400=4.3MP
+    dev = c('png', 'pdf'), dev.args = list(pdf = list(onefile = F)))
+
+```
+
+
+
+
+```{r Main_Code, include = F, cache = F}
+
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Setup - This code is run, but output is hidden
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Load Packages
+library(tidyverse) # Needed for data wrangling: dplyr, tidyr, ggplot2
+library(cowplot) # Needed for publication-quality ggplots
+library(IRdisplay)
+library(magrittr)
+library(tidyverse)
+library(scales)
+library(gridExtra)
+library(forecast)
+library(tseries)
+library(ggthemes)
+theme_set(theme_classic())
+
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Data Preparation
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Import datasets
+
+ur <- read.csv("Data/Mass Monthly Unemployment Rate.csv")
+
+
+########################################
+# Functions
+########################################
+
+source("R Functions/compare_models_function.R")
+source("R Functions/sim_random_walk_function.R")
+source("R Functions/sim_stationary_example_function.R")
+
+```
+
+# Time Series Analysis
+
+(Univariate) time series data is defined as sequence data over time:  $X_{1}$, $X_{2}$,..., $X_{T}$
+ 
+where  *T*  is the time period and  $X_{t}$ is the value of the time series at a particular point.
+
+Examples: daily temperatures in Boston, US presidential election turnout by year, minute stock prices
+
+Variables in time series models generally fall into three categories:
+
+(1) endogenous (past values of the time-series in questions)
+
+(2) random noise (accounting for uncertainty (CIs), and past random shocks)
+
+(3) exogenous (predictors outside the time-series)
+
+All time series models involve (1) and (2) but (3) is optional.
+
+
+
+## Why use time-series?
+
+(1) many forecasting tasks actually involve small samples which makes machine learning less effective
+
+(2) time series models are more interpretable and less black box than machine learning algorithms
+
+(2) time series appropriately accounts for forecasting uncertainty.
+
+As an example, lets look at the following data generating process known as a random walk:  $X_{t} = X_{t-1} + \varepsilon_{t}$
+ 
+We can compare the forecasting performance of linear regression to that of a basic time series model known as an AR(1) model.
+
+
+```{r compare_models, echo = F}
+
+compare.models(n=100)
+
+```
+
+Linear regression overfits the past observations and doesn't account for compounding error. With successive future predictions, the confidence interval should increase over time. Too much weight on random error.
+
+AR model just forecasts the average $X$ values from the past observations.
+
+
+
+## Autocorrelation & Autocovariance
+
+Autocorrelation/autocovariance refers to the correlation/covariance between two observations in the time series at different points.
+
+The central idea behind it is how related the data/time series is over time.
+
+For ease of interpretation we typically focus on autocorrelation i.e. what is the correlation between $X_{t}$ and  $X_{t + p}$ for some integer *p*. (Correlation between all *p* periods about in the sample)
+
+A related concept is partial autocorrelation that computes the correlation adjusting for previous lags/periods i.e. the autocorrelation between $X_{t}$ and  $X_{t + p}$ adjusting for the correlation of $X_{t}$ and  $X_{t + 1}$, ... , $X_{t + p - 1}$.
+
+When analyzing time series we usually view autocorrelation/partial autocorrelation in ACF/PACF plots.
+
+Let's view this for the random walk model we analyzed above: $X_{t} = X_{t-1} + \varepsilon_{t}$
+
+```{r simulate_random_walk, echo = T}
+dat <- sim.random.walk(n = 100)
+
+#plot random walk
+sim.plot <- dat %>% ggplot(aes(t,X)) +
+  geom_line() +
+  xlab("T") +
+  ylab("X") +
+  ggtitle("Time Series Plot")
+
+#ACF plot
+sim.corr <- ggAcf(dat$X,type="correlation") +
+  ggtitle("Autocorrelation ACF Plot")
+
+#PACF plot
+sim.partial <- ggAcf(dat$X,type="partial") +
+  ggtitle("Partial Autocorrelation PACF Plot")
+
+grid.arrange(sim.plot, sim.corr, sim.partial)
+
+```
+
+The ACF plot shows a high degree of correlation between each successive lag. This makes sense because we simulated this data with a random walk, where each successive time point value $X_{t}$ is a function of the previous time point value $X_{t-1}$.
+
+In contrast, the PACF plot shows the correlation between lags $p_{1},...,n$. The correlation is high when the lag is 1, but is weak for lags > 1 (i.e., lags with greater distance in time points).
+
+
+
+
+# Stationarity vs Nonstationarity
+
+Is the distribution of the data over time consistent?
+
+There are two main forms of stationarity.
+
+* Strict stationarity imples:
+
+  + The cumulative distribution function of the data does not depend on time:
+
+$F_{X}(X_{1},...,X_{T}) = F_{X}(X_{1 + \Delta},...,X_{T + \Delta})  \forall \Delta \in  \mathbb{R}$
+ 
+
+* Weak stationarity implies:
+
+  + the mean of the time series is constant
+$E(X_{T}) = E(X_{t + \Delta})$
+ 
+  + the autocovariance/autocorrelation only depends on the time difference between points
+$ACF(X_{t}, X_{t + \Delta - 1}) = ACF(X_{1}, X_{\Delta})$
+ 
+  + the time series has a finite variance
+$Var(X_{\Delta}) < \infty  \forall \Delta \in  \mathbb{R}$
+
+```{r station_v_nonstation, echo = T}
+
+df<-sim.stationary.example(n=1000)
+
+head(df)
+
+gns <- ggplot(df, aes(x = t, y = X1)) +
+  geom_line() +
+  labs(x = "T", y = "X1", title = "Nonstationary")
+
+gs <- ggplot(df, aes(x = t, y = X3)) +
+  geom_line() +
+  labs(x = "T", y = "X3", title = "Stationary")
+
+grid.arrange(gns, gs)
+
+```
+
+The nonstationary time series has an unstable mean, that changes over time. Whereas the stationary time series appears to have a constant mean over time, and finite variance.
+
+
+```{r ACF_plots_S_vs_NS, echo = T}
+
+#ACF for nonstationary and stationary time series
+nsACF <- ggAcf(df$X1, type = "correlation") +
+  labs(x = "T", y = "X1", title = "Nonstationary")
+
+sACF <- ggAcf(df$X3, type = "correlation") +
+  labs(x = "T", y = "X3", title = "Stationary")
+
+grid.arrange(nsACF, sACF)
+
+```
+
+The nonstationary time series has all significant correlations across lags and shows non mean-reverting behavior.
+
+The stationary time series has non-significant correlations between almost all lags.
+
+We can perform a unit root test (Augmented Dickey-Fuller test) to test for stationarity:
+```{r ADF_tests_nonstationary, echo = T}
+
+adf.test(df$X1)
+
+```
+
+In the ADF test, the null hypothesis is *nonstationary*, while the alternative hypothesis is *stationary*. For the above time series, we fail to reject to null hypothesis (*P* = `r round(adf.test(df$X1)[[4]], 3)`) and conclude that the time series exhibits nonstationarity.
+
+```{r ADF_tests_stationary, echo = T}
+
+adf.test(df$X3)
+
+```
+
+In the stationary example, the ADF test confirms stationarity by rejecting the null hypothesis (*P* = `r round(adf.test(df$X3)[[4]],3)`).
+
+
+## Transforming for stationarity
+
+Typically, nonstationary data are transformed by differencing or detrending to make the data more stationary.
+
+
+### Differencing
+
+Differencing involves taking differences between successive time series values.
+
+The order of differencing is defined as *p* for $X_{t} - X_{t-p}$.
+
+Let's transform a nonstationary time series to stationary by differencing with the random walk model.
+
+In a random walk $X_{t} = X_{t-1} + \varepsilon_{t}$ where $\varepsilon_{t} \sim N(0,\sigma^{2}) iid$.
+
+Differencing with an order of one means that $\tilde{X}_{t} = X_{t}-X_{t-1} = \varepsilon_{t}$.
+
+With data generated by random walk, the differencing order is t-1, which if we difference by this order, we have removed the $X_{t}-X_{t-1}$ term and are left with the random noise term $\varepsilon_{t}$, which is by definition, stationary.
+
+
+```{r differencing_in_time_series, echo = T}
+
+# differencing with an order of 1
+diff <- df$X1 - lag(df$X1, 1) # for all values of X1, subtract the previous (1th) value
+
+
+#plot original and differenced time series
+untrans <- ggAcf(df$X1, type = "correlation")
+
+lag.trans <- ggAcf(diff, type = "correlation")
+
+grid.arrange(untrans, lag.trans)
+```
+
+The ACF for df$X1 (generated by random walk), does not die off quickly, suggesting high correlations between each successive term (lag).
+
+However, the lag transformed (1 lag difference between time points) has weak correlations between these lags, showing stationarity.
+
+
+
+### Detrending
+
+An alternative way to induce stationarity from nonstationary data.
+
+
+Detrending involves removing a deterministic relationship with time.
+
+As an example suppose we have the following data generating process  $X_{t} = B_{t} + \varepsilon_{t}$ where $\varepsilon_{t} = N(0,\sigma^{2})iid$.
+
+Here, we have a deterministic linear relationship with time, and removing that relationship would leave the transformed time series $\tilde{X}_{t}$ where the only predictor is the random noise term $\varepsilon_{t}$, which is by definition stationary with constant mean and finite variance.
+
+Detrending involves using the transformed time series  $\tilde{X}_{t} = X_{t}-B_{t} = \varepsilon_{t}$.
+
+In the real world, we don't know the actual relationship with time, so we build a model and then remove the time component ($B_{t}$) leaving only the random noise term (residual error $\varepsilon_{t}$).
+
+```{r detrending_with_linear_regression, echo = T}
+
+detrended <- resid(lm(X2 ~ t, data = df))
+
+#plot original and detrended time series
+untransX2 <- ggAcf(df$X2, type = "correlation")
+
+detrendedX2 <- ggAcf(detrended, type = "correlation")
+
+grid.arrange(untransX2, detrendedX2)
+
+```
+
+The original data exhibit nonstationary behavior, with correlations extending far beyond the confidence intervals (highly significant).
+
+Alternatively, the detrended time series correlations fall mainly within the confidence intervals (not significant) and exhibit stationary behavior.
+
+
+
+## Basic Model Types: AR(p), MA(q), ARMA(p,q), ARIMA(p,d,q), Decomposition
+
+### Autoregressive AR(p) Models
+AR models specify $X_{t}$ as a function of lagged time series values $X_{t-1}, X_{t-2},...$ i.e $X_{t} = \mu + \phi_{1}X_{t-p}+...+\phi_{p}X_{t-p}+\varepsilon_{t}$
+ 
+where  $\mu$ is a mean term and $\varepsilon_{t} \sim N(0,\sigma^{2})$ is a random error. $X_{t}$ is a a function of the $\mu$ (mean/intercept) term plus a linear combination of past lagged values. Our model will estimate the $\phi_{i}$ parameters using one of several methods (Yule-Walker equations, Maximum Likelihood, or even linear regression).
+
+AR models can sometimes be non-stationary if a unit root is present (rejected the null in an ADF test).
+
+In AR models, because we depend on past lagged $X_{i}$ values, random noise terms in past periods can have influence on the future predictions. Conceptually, this is why the process can be nonstationary. Past large shocks can cause a series to diverge and become non mean-reverting and have infinite variance.
+
+When fitting an AR model the key choice is *p*, the number of lags (and $\phi$ parameters) to include in the model.
+
+### Moving Average MA(q) Models
+
+Similar to AR models, but instead of using past lagged values of the time series, we use past lagged random shock events (random error terms)
+
+MA models specify $X_{t}$ using random noise lags:
+
+$X_{t} = \mu + \varepsilon_{t} + \Theta_{1}\varepsilon_{t-1}+...+\Theta_{q}\varepsilon_{t-q}$
+ 
+where $\mu$ is a mean term and $\varepsilon_{t} \sim N(0,\sigma^{2})$ is a random error. $X_{t}$ is a a function of the $\mu$ (mean/intercept) term plus the random noise term in the current period $\varepsilon_{t}$ plus a linear combination of the past random noise terms $\Theta_{1,...,p}$. Our model will estimate the $\phi_{i}$ parameters using one of several methods
+
+Because MA models specify $X_{t}$ as a function of past random noise terms, we don't actually observe these past random noise terms, fitting them is more complicated and involves interative fitting. Also, because MA models are a linear combination of past random shocks, they are by construct, stationary (random noise terms are independent and identically distributed, *iid*, constant mean and finite variance).
+
+$X_{t}$ is a function of a finite number of random lags, past random shocks can only have a finite influence on future periods. This is why MA models are always stationary, whatever influence the random shocks have will trend toward zero over time.
+
+Similar to an AR model, when fitting an MA model the key choice is *q*, the number of random shock lags.
+
+### Autoregressive Moving Average ARMA(p,q) Models
+
+ARMA(p,q) models are a combination of an AR and MA model:
+
+$X_{t} = \mu + \phi_{1}X_{t-1}+...+\phi_{p}X_{t-p} + \varepsilon_{t} + \Theta_{1}\varepsilon_{t-1} +...+\Theta_{q}\varepsilon_{t-q}$
+ 
+where $\mu$ is a mean term and $\varepsilon_{t} \sim N(0,\sigma^{2})$ is a random error. $X_{t}$ is a function of a $\mu$ (mean/intercept) term plus a random noise term in the current period $\varepsilon_{t}$ plus a linear combination of both past lagged time series values and also past random noise terms
+
+When fitting an ARMA model, we need to choose two things: p, the number of AR lags, and q, the number of MA lags.
+
+### Autoregressive Integrated Moving Average ARIMA(p,d,q) Models
+ARIMA(p,d,q) is an ARMA model with differencing.
+
+Take an ARMA model and add in differencing. We take the difference between the time series at successive points in time.
+
+When fitting an ARIMA model we need to choose three things: p, the number of AR lags, q, the number of MA lags, and d, the number of differences to use.
+
+### Decomposition Models
+
+Decomposition models specify $X_{t}$ as a combination of a trend component ($T_{t}$), seasonal component ($S_{t}$), and an error component/residual ($E_{t}$) i.e.  $X_{t} = f(T_{t},S_{t},E_{t})$.
+
+Common decomposition forms are: $X_{t} = T_{t}+S_{t}+E_{t}$ or $X_{t} = T_{t}*S_{t}*E_{t}$ (where we then take logs to recover the additive form).
+
+There are various ways to estimate the different trend components: exponential smoothing, state space models/Kalman filtering, STL models, etc.
+
+
+
+## Fitting AR/MA/ARMA/ARIMA models with the Box Jenkins Method
+
+How to fit AR/MA/ARMA/ARIMA models on a real data set and review a generic strategy for fitting them (Box Jenkins method).
+
+This process involves several steps to help identify the *p*, *d*, and *q* parameters that we need:
+
+* Identify whether the time series is stationary or not
+
+* Identify *p*, *d*, and *q* of the time series by
+
+  + Making the time series stationary through differencing/detrending to find *d*
+  + Looking at ACF/PACF to find *p* and *q*
+  + Using model fit diagnostics like AIC or BIC to select the best model to find *p*, *d*, and *q*
+
+* Check the model fit using the Ljung-Box test
+
+
+## Fit some time series with real data
+
+This data comes from the FRED database (St. Louis Federal Reserve) and describes the monthly unemployment rate for Massachusetts between January 1976 and January 2020.
+```{r unemployment data, echo = F, comment = ""}
+
+ur <- ur %>% 
+  mutate(DATE = as.Date(DATE))
+
+head(ur)
+
+```
+
+Where MAURN is the monthly unemployment rate.
+
+### Check for stationarity
+```{r ur_stationarity_plot, echo = T}
+
+ur %>% 
+  ggplot(aes(x = DATE, y = MAURN)) +
+  geom_line()
+
+```
+
+Doesn't look stationary, mean varies over time.
+
+```{r ur_stationarity_ACF, echo = T}
+
+ggAcf(ur$MAURN, type = "correlation")
+
+```
+Again, looks nonstationary.
+
+```{r ur_stationarity_ADF, echo = T}
+
+adf.test(ur$MAURN)
+
+```
+Fail to reject the null hypothesis of non-stationarity.
+
+## Transforming for Stationarity & Identifying Model Parameters
+```{r AR_model, echo = T}
+
+ar.mod <- auto.arima(ur$MAURN,
+                     max.d = 0, # no differencing
+                     max.q = 0, # no random noise terms
+                     allowdrift = T #include a mu term
+                     # note only p is allowed to vary -> AR model
+                     # p is the number of autoregressive lags
+                     )
+
+ar.mod
+
+```
+
+```{r MA_model, echo = T}
+
+ma.mod <- auto.arima(ur$MAURN,
+                     max.d = 0, # no differencing
+                     max.p = 0, # no lags
+                     allowdrift = T #include a mu term
+                     # note only q is allowed to vary -> MA model
+                     # q is the number of random noise (shock lag) events
+                     )
+
+ma.mod
+
+```
+
+```{r ARMA_model, echo = T}
+
+arma.mod <- auto.arima(ur$MAURN,
+                     max.d = 0, # no differencing
+                     allowdrift = T #include a mu term
+                     # note p and q are allowed to vary -> ARMA model
+                     # p is the number of autoregressive lags
+                     # q is the number of random noise (shock lag) events
+                     )
+
+arma.mod
+
+```
+
+```{r ARIMA_model, echo = T}
+
+arima.mod <- auto.arima(ur$MAURN,
+                     allowdrift = T #include a mu term
+                     # note d, p, and q are allowed to vary -> ARIMA model
+                     # d is the 
+                     # p is the number of autoregressive lags
+                     # q is the number of random noise (shock lag) events
+                     )
+
+arima.mod
+
+```
+
+
+## Checking the Residuals of the Model Fit (Ljung-Box test)
+```{r ljung_box, echo = T}
+
+#calculate residuals of each model
+ar.resid <- resid(ar.mod)
+ma.resid <- resid(ma.mod)
+arma.resid <- resid(arma.mod)
+arima.resid <- resid(arima.mod)
+
+```
+
+```{r ar_resid_plot, echo = T}
+
+#plot PACF plot of each models residuals
+ggAcf(ar.resid, type = "partial")
+
+Box.test(ar.resid, type = "Ljung-Box", lag = 1)
+
+```
+
+```{r ma_resid_plot, echo = T}
+
+#plot PACF plot of each models residuals
+ggAcf(ma.resid, type = "partial")
+
+Box.test(ma.resid, type = "Ljung-Box", lag = 1)
+```
+
+```{r arma_resid_plot, echo = T}
+
+#plot PACF plot of each models residuals
+ggAcf(arma.resid, type = "partial")
+
+Box.test(arma.resid, type = "Ljung-Box", lag = 1)
+```
+
+```{r arima_resid_plot, echo = T}
+
+#plot PACF plot of each models residuals
+ggAcf(arima.resid, type = "partial")
+
+Box.test(arima.resid, type = "Ljung-Box", lag = 1)
+```
+
+
+## Making a forecast for each model
+
+```{r forecasts_arima, echo = T}
+
+#make forecast for each model
+ar.fc <- forecast(ar.mod, h = 24, level = 80)
+ma.fc <- forecast(ma.mod, h = 24, level = 80)
+arma.fc <- forecast(arma.mod, h = 24, level = 80)
+arima.fc <- forecast(arima.mod, h = 24, level = 80)
+
+
+#plot forecast for each model
+g1 <- autoplot(ar.fc)
+g2 <- autoplot(ma.fc)
+g3 <- autoplot(arma.fc)
+g4 <- autoplot(arima.fc)
+grid.arrange(g1, g2, g3, g4)
+
+```
+
+## Fitting Seasonal Trend Loess (STL) Decomposition Models
+
+```{r STL_model, echo = T}
+
+#transform to time series object; need to specify frequency
+ur.ts <- ts(ur$MAURN, frequency = 12) # monthly data (12 months/year)
+
+#fit stil model
+stl.mod <- stl(ur.ts, s.window = "periodic")
+
+
+#plot model fit
+autoplot(stl.mod)
+```
+
+
+```{r STL_forecast, echo = T}
+#make forecast
+stl.fc <- forecast(stl.mod, h = 24, level = 80)
+
+autoplot(stl.fc)
+
+```
+
+
+
+
+
+## Where to go Next
+
+* Advanced time series models
+  + ARCH, GARCH, etc. that model changing variance over time
+* Vector Autoregression (VAR)
+  + For multivariate i.e. multiple time series and modeling dependencies between them
+* Machine Learning
+  + How to do CV with time series
+  + Neural networks for sequence data (LSTMs, etc.)
+* Spatial Statistics
+  + Generalize time dependence to spatial dependence in multiple dimensions
+* Econometrics
+  + Cointegration
+  + Granger Causality
+  + Serial correlation
+  + Regression with time series data
+* Bayesian time series
+
+```{r rate_variation_small, echo = F}
+
+
+```
+
+
+
+```{r rate_variation_large, echo = F}
+
+```
+
+
+## Session Information
+
+```{r Session_Info, echo = F, comment = ""}
+
+# Add session information to help with reproduceability
+sessionInfo()
+
+
+```
+
+

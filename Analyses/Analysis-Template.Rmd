@@ -1,0 +1,271 @@
+---
+title: "Is housing a good investment?"
+author: "Dr. Riley M. Anderson"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+graphics: yes
+output:
+  github_document:
+    toc: yes
+    toc_depth: 5
+    pandoc_args: --webtex
+  html_document:
+    keep_md: yes
+    theme: readable
+    mathjax: default
+  html_notebook:
+    code_folding: hide
+    theme: readable
+    mathjax: default
+  pdf_document:
+    toc: yes
+header-includes:
+  \usepackage{float}
+  \floatplacement{figure}{H}
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = F}
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Knitr Options
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Set root directory to the project directory
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+
+# Set default knitr options: 
+# Suppress warnings and messages, cache chunks, 
+#  set default figure size to 6x8 at 300 dpi, and save a png and pdf
+knitr::opts_chunk$set(warning = F, message = F, collapse = T, cache = T,
+    fig.height = 6, fig.width = 8, dpi = 300, # 6x8" @ 300dpi:1800x2400=4.3MP
+    dev = c('png', 'pdf'), dev.args = list(pdf = list(onefile = F)))
+
+```
+
+
+
+## Overview
+
+Is real estate the putative investment strategy we commonly think it is?
+
+"Invest in a house"... "You can't lose money on a house"... "Owning a home is part of a good retirement plan"
+
+Let's find out.
+
+### Some basic numbers:
+
+* 53.15%  --- total U.S. housing appreciation between 1990 and 2024
+* 56.52%  --- total U.S. inflation rate between 1990 and 2024
+
+If we break this up annually, the *appreciation* rate and *inflation* rate over the same time period are 1.69% and 2.27%, respectively.
+
+
+```{r Main_Code, include = F, cache = F}
+
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Setup - This code is run, but output is hidden
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Load Packages
+library(tidyverse) # Needed for data wrangling: dplyr, tidyr, ggplot2
+library(cowplot) # Needed for publication-quality ggplots
+
+
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# @@@@@ Data Preparation
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+# Import datasets
+d <- read.csv("data/hp2000_2010.csv")
+
+```
+
+
+```{r Data_Wrangling, echo = F, comment = ""}
+
+# Current median home price in the US:
+chp.med <- 420357
+
+set.seed(123)
+aa.rate <- rnorm(30, mean = 0.0169, sd = 0.0005)
+inf.rater <- rnorm(30, mean = 0.0227, sd = 0.0005)
+
+aaa.rate <- rnorm(30, mean = 0.0169, sd = 0.005)
+inf.raterr <- rnorm(30, mean = 0.0227, sd = 0.005)
+
+
+a.rate <- 0.0169
+
+inf.rate <- 0.0227
+
+loan.cost <- 188000 # 15 year loan at 5.27%
+
+chp.30 <- data.frame(Year = c(seq(2024, 2053, by = 1)),
+                     Time = c(seq(0, 29, by = 1)))
+
+chp.30 <- chp.30 %>% 
+  mutate(Price = chp.med * (1 + a.rate) ^ Time,
+         I.price = chp.med * (1 + inf.rate) ^ Time,
+         deficit = I.price - Price,
+         adj.price = Price - deficit,
+         loan = case_when(Time < 15 ~ loan.cost/15,
+                          TRUE ~ 0),
+         prop.tax = chp.med * 0.03,
+         insurance = 1000,
+         expenses = loan + prop.tax + insurance,
+         ROI = adj.price - expenses)
+
+
+fixed.roi <- max(chp.30$ROI) - chp.med
+fixed.ror <- fixed.roi/chp.med/30
+
+chp.30long <- chp.30 %>%   
+  pivot_longer(cols = c("Price", "adj.price", "ROI"),
+               names_to = "price.type")
+
+####################################
+
+chp.30.small <- chp.30 %>% 
+  mutate(Price = chp.med * (1 + aa.rate) ^ Time,
+         I.price = chp.med * (1 + inf.rater) ^ Time,
+         deficit = I.price - Price,
+         adj.price = Price - deficit,
+         loan = case_when(Time < 15 ~ loan.cost/15,
+                          TRUE ~ 0),
+         prop.tax = chp.med * 0.03,
+         insurance = 1000,
+         expenses = loan + prop.tax + insurance,
+         ROI = adj.price - expenses)
+  
+fixed.roi.s <- max(chp.30.small$ROI) - chp.med
+fixed.ror.s <- fixed.roi.s/chp.med/30
+
+chp.30long.small <- chp.30.small %>%   
+  pivot_longer(cols = c("Price", "adj.price", "ROI"),
+               names_to = "price.type")
+
+
+###############################
+chp.30.large <- chp.30 %>% 
+  mutate(Price = chp.med * (1 + aaa.rate) ^ Time,
+         I.price = chp.med * (1 + inf.raterr) ^ Time,
+         deficit = I.price - Price,
+         adj.price = Price - deficit,
+         loan = case_when(Time < 15 ~ loan.cost/15,
+                          TRUE ~ 0),
+         prop.tax = chp.med * 0.03,
+         insurance = 1000,
+         expenses = loan + prop.tax + insurance,
+         ROI = adj.price - expenses)
+  
+fixed.roi.l <- max(chp.30.large$ROI) - chp.med
+fixed.ror.l <- fixed.roi.l/chp.med/30
+
+chp.30long.large <- chp.30.large %>%   
+  pivot_longer(cols = c("Price", "adj.price", "ROI"),
+               names_to = "price.type")
+
+```
+
+## If we assume fixed appreciation and inflation rates, owning a home is a poor investment, but you probably already figured this out by comparing the rates above. Appreciation doesn't beat inflation.
+
+```{r fixed_rate, echo = F}
+
+chp.30long %>% 
+  ggplot(aes(x = Year, y = value, color = price.type)) +
+  geom_line() +
+  theme_classic() +
+  scale_color_discrete(breaks = c("Price", "adj.price", "ROI"),
+                       labels = c("Appreciation",
+                                  "Appreciation\n(2024 dollars)",
+                                "Return on Investment\n(2024 dollars)")) +
+  geom_segment(aes(x = 2024, xend = 2033, y = 420357),
+               color = 'black', linetype = 'dashed') +
+  geom_point(aes(x = 2038, y = 461317), color = 'black') +
+  annotate(geom = "text", x = 2042, y = 450000,
+                label = "loan paid off", size = 3) +
+  annotate(geom = "text", x = 2033, y = 405000,
+           label = "break even", size = 3) +
+  annotate(geom = "text", x = 2031, y = 630000,
+           label = "ROI over 30 years:\n127k (2024 $)\n 1.01%/year") +
+  labs(y = "Home value (USD)", color = "")
+
+
+
+```
+**Figure 1.** Appreciation in home value over 30 years. Starting price is $420357, the median U.S. home price in 2024. The green line is the home's appreciated value, the red line is the appreciated value adjusted for inflation (shown in 2024 dollars), and the blue line is the inflation adjusted return on investment (appreciation - loan costs, insurance, and property taxes). Appreciation and inflation rates are set to fixed values (1.69% & 2.27%, respectively).
+
+Adjusted for inflation, our home's value has increased only $127,000 in 30 years, that's an average rate of return of only 1.01 % per year.
+
+This seems like a poor investment, considering a treasury bond will pay out 5x as much, your initial $420,357 investment would net `r (420357 * (1 + 0.028)^30)` over 30 years, adjusted for inflation. In the stock market, gains would be more like `r (420357 * (1 + 0.054)^30)` (2024 dollars).
+
+
+
+However, markets are never stable and volatility exists in both housing appreciation rates as well as inflation rates.
+
+Let's introduce a small amount of variability into the equation:
+
+```{r rate_variation_small, echo = F}
+
+chp.30long.small %>% 
+  ggplot(aes(x = Year, y = value, color = price.type)) +
+  geom_line() +
+  theme_classic() +
+  scale_color_discrete(breaks = c("Price", "adj.price", "ROI"),
+                       labels = c("Appreciation",
+                                  "Appreciation\n(2024 dollars)",
+                                "Return on Investment\n(2024 dollars)")) +
+  geom_segment(aes(x = 2024, xend = 2033, y = 420357),
+               color = 'black', linetype = 'dashed') +
+  geom_point(aes(x = 2038, y = 461317), color = 'black') +
+  annotate(geom = "text", x = 2042, y = 450000,
+                label = "loan paid off", size = 3) +
+  annotate(geom = "text", x = 2033, y = 405000,
+           label = "break even", size = 3) +
+  annotate(geom = "text", x = 2031, y = 630000,
+           label = "ROI over 30 years:\n149k (2024 $)\n 1.20%/year") +
+  labs(y = "Home value (USD)", color = "")
+
+
+
+```
+
+**Figure 2.** Volatility introduced in the appreciation and inflation rates ($\sigma$ = 0.05 %).
+
+
+```{r rate_variation_large, echo = F}
+
+chp.30long.large %>% 
+  ggplot(aes(x = Year, y = value, color = price.type)) +
+  geom_line() +
+  theme_classic() +
+  scale_color_discrete(breaks = c("Price", "adj.price", "ROI"),
+                       labels = c("Appreciation",
+                                  "Appreciation\n(2024 dollars)",
+                                "Return on Investment\n(2024 dollars)")) +
+  geom_point(aes(x = 2038, y = 441317), color = 'black') +
+  annotate(geom = "text", x = 2042, y = 420000,
+                label = "loan paid off", size = 3) +
+  annotate(geom = "text", x = 2031, y = 830000,
+           label = "ROI over 30 years:\n478k (2024 $)\n 3.79%/year") +
+  labs(y = "Home value (USD)", color = "")
+
+
+
+```
+
+**Figure 3.** Volatility introduced in the appreciation and inflation rates ($\sigma$ = 0.5 %).
+
+
+## Session Information
+
+```{r Session_Info, echo = F, comment = ""}
+
+# Add session information to help with reproduceability
+sessionInfo()
+
+
+```
+
+
