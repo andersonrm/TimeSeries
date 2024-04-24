@@ -16,3 +16,6 @@ gridExtra
 forecast
 tseries
 ggthemes
+fpp2
+fma
+expsmooth

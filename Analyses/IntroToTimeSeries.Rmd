@@ -1,6 +1,6 @@
 ---
 title: "Intro to Time Series"
-author: "Dr. Riley M. Anderson"
+author: "Riley M. Anderson"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 graphics: yes
 output:
@@ -60,7 +60,7 @@ library(magrittr)
 library(tidyverse)
 library(scales)
 library(gridExtra)
-library(forecast)
+library(fpp2)
 library(tseries)
 library(ggthemes)
 theme_set(theme_classic())
@@ -326,9 +326,9 @@ Alternatively, the detrended time series correlations fall mainly within the con
 
 
 
-## Basic Model Types: AR(p), MA(q), ARMA(p,q), ARIMA(p,d,q), Decomposition
+# Basic Model Types: AR(p), MA(q), ARMA(p,q), ARIMA(p,d,q), Decomposition
 
-### Autoregressive AR(p) Models
+## Autoregressive AR(p) Models
 AR models specify $X_{t}$ as a function of lagged time series values $X_{t-1}, X_{t-2},...$ i.e $X_{t} = \mu + \phi_{1}X_{t-p}+...+\phi_{p}X_{t-p}+\varepsilon_{t}$
  
 where  $\mu$ is a mean term and $\varepsilon_{t} \sim N(0,\sigma^{2})$ is a random error. $X_{t}$ is a a function of the $\mu$ (mean/intercept) term plus a linear combination of past lagged values. Our model will estimate the $\phi_{i}$ parameters using one of several methods (Yule-Walker equations, Maximum Likelihood, or even linear regression).
@@ -339,7 +339,7 @@ In AR models, because we depend on past lagged $X_{i}$ values, random noise term
 
 When fitting an AR model the key choice is *p*, the number of lags (and $\phi$ parameters) to include in the model.
 
-### Moving Average MA(q) Models
+## Moving Average MA(q) Models
 
 Similar to AR models, but instead of using past lagged values of the time series, we use past lagged random shock events (random error terms)
 
@@ -355,7 +355,7 @@ $X_{t}$ is a function of a finite number of random lags, past random shocks can 
 
 Similar to an AR model, when fitting an MA model the key choice is *q*, the number of random shock lags.
 
-### Autoregressive Moving Average ARMA(p,q) Models
+## Autoregressive Moving Average ARMA(p,q) Models
 
 ARMA(p,q) models are a combination of an AR and MA model:
 
@@ -365,14 +365,14 @@ where $\mu$ is a mean term and $\varepsilon_{t} \sim N(0,\sigma^{2})$ is a rando
 
 When fitting an ARMA model, we need to choose two things: p, the number of AR lags, and q, the number of MA lags.
 
-### Autoregressive Integrated Moving Average ARIMA(p,d,q) Models
+## Autoregressive Integrated Moving Average ARIMA(p,d,q) Models
 ARIMA(p,d,q) is an ARMA model with differencing.
 
 Take an ARMA model and add in differencing. We take the difference between the time series at successive points in time.
 
 When fitting an ARIMA model we need to choose three things: p, the number of AR lags, q, the number of MA lags, and d, the number of differences to use.
 
-### Decomposition Models
+## Decomposition Models
 
 Decomposition models specify $X_{t}$ as a combination of a trend component ($T_{t}$), seasonal component ($S_{t}$), and an error component/residual ($E_{t}$) i.e.  $X_{t} = f(T_{t},S_{t},E_{t})$.
 
@@ -382,7 +382,7 @@ There are various ways to estimate the different trend components: exponential s
 
 
 
-## Fitting AR/MA/ARMA/ARIMA models with the Box Jenkins Method
+# Fitting AR/MA/ARMA/ARIMA models with the Box Jenkins Method
 
 How to fit AR/MA/ARMA/ARIMA models on a real data set and review a generic strategy for fitting them (Box Jenkins method).
 
@@ -561,7 +561,7 @@ grid.arrange(g1, g2, g3, g4)
 
 ```
 
-## Fitting Seasonal Trend Loess (STL) Decomposition Models
+# Fitting Seasonal Trend Loess (STL) Decomposition Models
 
 ```{r STL_model, echo = T}
 
@@ -585,11 +585,413 @@ autoplot(stl.fc)
 
 ```
 
+# Exponential Smoothing
+
+* From https://www.geeksforgeeks.org/exponential-smoothing-in-r-programming/#
+
+Exponential smoothing is the oldest version of time series analysis and is most useful when we want more recent events to have a greater influence on our forecasts than more distant events (i.e., inverse time weighting). 
+
+This model works by assigning exponentially decreasing weights to events further in the past. Additionally, the "smoothing" component acts as a low-pass filter, generally smoothing out the trend over time by removing high-frequency noise.
+
+Basic exponential smoothing models include:
+
+* Simple Exponential Smoothing
+* Holt's method
+* Holt-Winter's Seasonal method
+* Damped Trend method
+
+# Simple Exponential Smoothing
+
+* Used for data that has no trend or seasonal pattern
+
+Weight of every parameter is determined by a smoothing parameter, $\alpha$ with range 0-1, but in practice is usually between 0.1 and 0.2. When $\alpa$ is closer to 0, historical events will be weighted similar to recent events ("slow-learning"). $\alpha$ close to 1 means extreme weighting on recent event where historical values have little influence on future predictions ("fast-learning").
+
+
+An example using Google's stock price data
+```{r SES_google, echo = T}
+
+# training data:
+google.train <- window(goog, end = 900)
+
+# test data:
+google.test <- window(goog, start = 901)
+
+# Performing SES on  the 
+# Google stock data
+ses.goog <- ses(google.train, 
+                alpha = .2,
+                h = 100) # h is number of time points into the future
+autoplot(ses.goog)
+
+```
+
+The flat line forecast suggests that the model is not capturing the present trend.
+
+We can remove the trend with the diff() function.
+
+```{r SES_google_diff, echo = T}
+
+google.diff <- diff(google.train)
+
+#autoplot(google.diff)
+
+ses.goog.diff <- ses(google.diff,
+                     alpha = 0.2,
+                     h = 100)
+
+autoplot(ses.goog.diff)
+
+```
+
+## Validation of SES
+
+Create a differenced validation data set to compare with the differenced training set. Then we'll iterate the model fit through all values $\alpha$ 0.01 - 0.99 to find the optimal value that minimizes RMSE.
+
+```{r ses_validation, echo = T}
+
+# remove the trend from the test data
+goog.diff.test <- diff(google.test)
+
+accuracy(ses.goog.diff, goog.diff.test)[2,2]
+
+# comparing our model
+alpha <- seq(.01, .99, by = .01)
+RMSE <- NA
+for(i in seq_along(alpha)) {
+  fit <- ses(google.diff, alpha = alpha[i],
+             h = 100)
+  RMSE[i] <- accuracy(fit, 
+                      goog.diff.test)[2,2]
+}
+
+# convert to a data frame and 
+# identify min alpha value
+alpha.fit <- tibble(alpha, RMSE)
+alpha.min <- filter(alpha.fit, 
+                    RMSE == min(RMSE))
+ 
+# plot RMSE vs. alpha
+ggplot(alpha.fit, aes(alpha, RMSE)) +
+  geom_line() +
+  geom_point(data = alpha.min,
+             aes(alpha, RMSE), 
+             size = 2, color = "red")
+
+
+```
+
+
+The minimum RMSE was reached at $\alpha$ = 0.01, which suggests increasing the weights of more historical values will better capture the trend of Google's stock price.
+
+Refit the forecast to the optimized $\alpha$ value of 0.01.
+
+```{r SES_google_optimized, echo = T}
+
+# refit model with alpha = .01
+ses.goog.opt <- ses(google.diff, 
+                    alpha = .01,
+                    h = 100)
+ 
+# performance eval
+accuracy(ses.goog.opt, goog.diff.test)
+ 
+# plotting results
+p1 <- autoplot(ses.goog.opt) +
+  theme(legend.position = "bottom")
+p2 <- autoplot(goog.diff.test) +
+  autolayer(ses.goog.opt, alpha = .5) +
+  ggtitle("Predicted vs. actuals for
+                 the test data set")
+ 
+grid.arrange(p1, p2, 
+                        nrow = 1)
+
+```
+
+# Holt's method
+
+With SES we had to remove the long-term trends to improve the model. But in **Holt’s Method**, we can apply exponential smoothing while we are capturing the time trend in the data. This is a technique that works with data having a time trend but no seasonality. In order to make predictions on the data, Holt’s Method uses **two smoothing parameters, alpha, and beta**, which correspond to the level components and trend components. 
+
+```{r holt_google, echo = T}
+
+# applying holt's method on
+# Google stock Data
+holt.goog <- holt(google.train,
+                  h = 100)
+
+autoplot(holt.goog)
+
+goog
+```
+
+Holt's method will automatically set the optimal value of $\alpha$, but we can optionally set the parameters as well. Again, $\alpha$ close to 1 indicates fast learning, while $\alpha$ close to 0 indicates slow learning.
+
+```{r holt_google_accuracy, echo = T}
+
+# holt's method
+holt.goog$model
+ 
+# accuracy of the model
+accuracy(holt.goog, google.test)
+
+```
+
+The parameter $\beta$ = 0.0001 was used to remove errors from the training set. We can further tune our beta from this value. 
+
+We can optimize the value of $\beta$ through a loop ranging from 0.0001 to 0.5 that will minimize the RMSE test. 
+
+```{r holt_google_optimize_beta, echo = T}
+
+# identify optimal beta parameter
+beta <- seq(.0001, .5, by = .001)
+RMSE <- NA
+for(i in seq_along(beta)) {
+  fit <- holt(google.train,
+              beta = beta[i], 
+              h = 100)
+  RMSE[i] <- accuracy(fit, 
+                      google.test)[2,2]
+}
+ 
+# convert to a data frame and
+# identify min beta value
+beta.fit <- data_frame(beta, RMSE)
+beta.min <- filter(beta.fit, 
+                   RMSE == min(RMSE))
+ 
+# plot RMSE vs. beta
+ggplot(beta.fit, aes(beta, RMSE)) +
+  geom_line() +
+  geom_point(data = beta.min, 
+             aes(beta, RMSE), 
+             size = 2, color = "red")
+
+```
+
+The optimal $\beta$ value is `r beta.min[[1]]`. Now refit the training model with our optimal $\alpha$ and $\beta$ parameters and compare to the original model.
+
+```{r holt_google_compare_models, echo = T}
+
+holt.goog <- holt(google.train,
+                  h = 100)
+ 
+# new model with optimal beta
+holt.goog.opt <- holt(google.train,
+                      h = 100,
+                      beta = beta.min[[1]])
+ 
+# accuracy of first model
+accuracy(holt.goog, google.test)
+ 
+# accuracy of new optimal model
+accuracy(holt.goog.opt, google.test)
+ 
+p1 <- autoplot(holt.goog) +
+  ggtitle("Original Holt's Model") +
+  coord_cartesian(ylim = c(400, 1000))
+ 
+p2 <- autoplot(holt.goog.opt) +
+  ggtitle("Optimal Holt's Model") +
+  coord_cartesian(ylim = c(400, 1000))
+ 
+grid.arrange(p1, p2,nrow = 1)
+
+```
+
+The optimized model is more conservative, and the confidence interval is more extreme.
 
 
 
+# Holt-Winter's Seasonal method
 
-## Where to go Next
+The Holt-Winter’s Seasonal method is used for data with both seasonal patterns and trends. This method can be implemented either by using an *additive structure* or by using a *multiplicative structure* depending on the data set. The additive structure or model is used when the seasonal pattern of data has the same magnitude or is consistent throughout, while the multiplicative structure or model is used if the magnitude of the seasonal pattern of the data increases over time. It uses three smoothing parameters,- $\alpha$, $\beta$, and $\gamma$.
+
+An additive model linearly decreases the weights of historic events, while a multiplicative model exponentially decreases the weights of historical events.
+
+Use the decompose() function to perform this kind of exponential smoothing. This  example uses the qcement dataset.
+
+```{r holtwinter_qcement, echo = T}
+
+# create training and validation
+# of the AirPassengers data
+qcement.train <- window(qcement, 
+                        end = c(2012, 4))
+qcement.test <- window(qcement,
+                       start = c(2013, 1))
+ 
+# applying holt-winters 
+# method on qcement
+autoplot(decompose(qcement))
+
+
+```
+
+Here, the seasonal component does not appear to increase with time, suggesting an *additive model* will provide a better fit.
+
+To create an Additive Model that deals with error, trend, and seasonality, we are going to use the ets() function. Out of the 36 models, the ets() chooses the best additive model. For additive model, the model parameter of ets() will be ‘AAA’.
+
+```{r ets_qcement, echo = T}
+
+# applying ets
+qcement.hw <- ets(qcement.train, model = "AAA") # define additive
+
+autoplot(forecast(qcement.hw))
+
+```
+
+Assess the model and summarize the smoothing parameters. Check the residuals and find out the accuracy of our model.
+
+```{r ets_qcement_resids_accuracy, echo = T}
+ 
+# assessing our model
+summary(qcement.hw)
+checkresiduals(qcement.hw)
+
+```
+
+Residuals look good.
+
+
+```{r ets_qcement_forceast, echo = T}
+# forecast the next 5 quarters
+qcement.f1 <- forecast(qcement.hw, h = 5)
+ 
+# check accuracy
+accuracy(qcement.f1, qcement.test)
+
+```
+
+Accuracy is pretty good (RMSE = `r accuracy(qcement.f1, qcement.test)[[2,2]]`).
+
+
+Here is an example of how the Multiplicative model works using ets(). For that purpose, the model parameter of ets() will be ‘MAM’. However, we already know that the additive model will fit this time series more appropriately.
+
+```{r etsMAM_qcement, echo = T}
+
+# applying ets
+qcement.hw2 <- ets(qcement.train, model = "MAM") # define multiplicative
+
+checkresiduals(qcement.hw2)
+
+```
+
+
+## Optimize the Holt-Winter's additive model
+
+Next we can optimize the $\gamma$ parameter in order to minimize the error rate. Then find the accuracy and also plot the predictive values. Since the seasonal  
+
+```{r etsAAA_qcement_optimize, echo = T}
+
+# forecast the next 5 quarters
+qcement.f1 <- forecast(qcement.hw,
+                       h = 5)
+ 
+# check accuracy
+accuracy(qcement.f1, qcement.test)
+ 
+gamma <- seq(0.01, 0.85, 0.01)
+RMSE <- NA
+ 
+for(i in seq_along(gamma)) {
+  hw.expo <- ets(qcement.train, 
+                 "AAA", 
+                 gamma = gamma[i])
+  future <- forecast(hw.expo, 
+                     h = 5)
+  RMSE[i] = accuracy(future, 
+                     qcement.test)[2,2]
+}
+ 
+error <- data_frame(gamma, RMSE)
+
+minimum <- filter(error, 
+                  RMSE == min(RMSE))
+
+ggplot(error, aes(gamma, RMSE)) +
+  geom_line() +
+  geom_point(data = minimum, 
+             color = "blue", size = 2) +
+  ggtitle("gamma's impact on 
+            forecast errors",
+  subtitle = "gamma = 0.21 minimizes RMSE")
+ 
+# previous model with additive error, trend and seasonality
+accuracy(qcement.f1, qcement.test)
+
+```
+
+Optimizing $\gamma$ has brought the RMSE from `r accuracy(qcement.f1, qcement.test)[1,2]` down to `r accuracy(qcement.f1, qcement.test)[2,2]`.
+
+
+```{r etsAAA_qcement_forecast_optimized, echo = F}
+
+# new model with optimal gamma parameter
+qcement.hw6 <- ets(qcement.train,
+                   model = "AAA", 
+                   gamma = 0.21)
+qcement.f6 <- forecast(qcement.hw6, 
+                       h = 5)
+accuracy(qcement.f6, qcement.test)
+ 
+# predicted values
+qcement.f6
+autoplot(qcement.f6)
+
+```
+
+
+
+# Damping model
+
+The damping method uses the **damping coefficient** $\phi$ to estimate more conservatively the predicted trends. The value of phi lies between 0 and 1. If we believe that our additive and multiplicative model is going to be a flat line then chances are that it is damped. To understand the working principle of damping forecasting we will use the fpp2::ausair data set where we will create many models and try to have much more conservative trend lines,
+
+```{r damping_model, echo = T}
+
+# Damping model in R
+ 
+# holt's linear (additive) model
+fit1 <- ets(ausair, model = "ZAN",
+            alpha = 0.8, beta = 0.2)
+pred1 <- forecast(fit1, h = 5)
+ 
+# holt's linear (additive) model
+fit2 <- ets(ausair, model = "ZAN", 
+            damped = TRUE, alpha = 0.8, 
+            beta = 0.2, phi = 0.85)
+pred2 <- forecast(fit2, h = 5)
+ 
+# holt's exponential
+# (multiplicative) model
+fit3 <- ets(ausair, model = "ZMN",
+            alpha = 0.8, beta = 0.2)
+pred3 <- forecast(fit3, h = 5)
+ 
+# holt's exponential 
+# (multiplicative) model damped
+fit4 <- ets(ausair, model = "ZMN", 
+            damped = TRUE,
+            alpha = 0.8, beta = 0.2,
+            phi = 0.85)
+pred4 <- forecast(fit4, h = 5)
+ 
+autoplot(ausair) +
+  autolayer(pred1$mean, 
+            color = "blue") +
+  autolayer(pred2$mean, 
+            color = "blue",
+            linetype = "dashed") +
+  autolayer(pred3$mean, 
+            color = "red") +
+  autolayer(pred4$mean, 
+            color = "red", 
+            linetype = "dashed")
+
+```
+
+Solid lines are have no $\phi$ parameter, while dashed lines have $\phi$ = 0.85. The blue lines are additive models and the red lines are multiplicative models.
+
+
+# Where to go Next
 
 * Advanced time series models
   + ARCH, GARCH, etc. that model changing variance over time
@@ -607,19 +1009,8 @@ autoplot(stl.fc)
   + Regression with time series data
 * Bayesian time series
 
-```{r rate_variation_small, echo = F}
 
-
-```
-
-
-
-```{r rate_variation_large, echo = F}
-
-```
-
-
-## Session Information
+# Session Information
 
 ```{r Session_Info, echo = F, comment = ""}
 
