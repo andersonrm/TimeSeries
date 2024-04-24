@@ -604,7 +604,7 @@ Basic exponential smoothing models include:
 
 * Used for data that has no trend or seasonal pattern
 
-Weight of every parameter is determined by a smoothing parameter, $\alpha$ with range 0-1, but in practice is usually between 0.1 and 0.2. When $\alpa$ is closer to 0, historical events will be weighted similar to recent events ("slow-learning"). $\alpha$ close to 1 means extreme weighting on recent event where historical values have little influence on future predictions ("fast-learning").
+Weight of every parameter is determined by a smoothing parameter, $\alpha$ with range 0-1, but in practice is usually between 0.1 and 0.2. When $\alpha$ is closer to 0, historical events will be weighted similar to recent events ("slow-learning"). $\alpha$ close to 1 means extreme weighting on recent event where historical values have little influence on future predictions ("fast-learning").
 
 
 An example using Google's stock price data
@@ -721,7 +721,6 @@ holt.goog <- holt(google.train,
 
 autoplot(holt.goog)
 
-goog
 ```
 
 Holt's method will automatically set the optimal value of $\alpha$, but we can optionally set the parameters as well. Again, $\alpha$ close to 1 indicates fast learning, while $\alpha$ close to 0 indicates slow learning.
@@ -804,16 +803,20 @@ The optimized model is more conservative, and the confidence interval is more ex
 
 # Holt-Winter's Seasonal method
 
-The Holt-Winter’s Seasonal method is used for data with both seasonal patterns and trends. This method can be implemented either by using an *additive structure* or by using a *multiplicative structure* depending on the data set. The additive structure or model is used when the seasonal pattern of data has the same magnitude or is consistent throughout, while the multiplicative structure or model is used if the magnitude of the seasonal pattern of the data increases over time. It uses three smoothing parameters,- $\alpha$, $\beta$, and $\gamma$.
+Google's stock prices aren't likely to have a major seasonal component, but something like crop yield, or gas prices likely would have strong seasonal components.
+
+The Holt-Winter’s Seasonal method is used for data with both seasonal patterns and time trends. This method can be implemented either by using an *additive structure* or by using a *multiplicative structure* depending on the data set. The additive structure or model is used when the seasonal pattern of data has the same magnitude or is consistent throughout, while the multiplicative structure or model is used if the magnitude of the seasonal pattern of the data increases over time. It uses three smoothing parameters,- $\alpha$, $\beta$, and $\gamma$.
 
 An additive model linearly decreases the weights of historic events, while a multiplicative model exponentially decreases the weights of historical events.
 
 Use the decompose() function to perform this kind of exponential smoothing. This  example uses the qcement dataset.
 
+
+The below example uses the Quarterly Australian Portland Cement Production data.
 ```{r holtwinter_qcement, echo = T}
 
 # create training and validation
-# of the AirPassengers data
+# of the qcement data
 qcement.train <- window(qcement, 
                         end = c(2012, 4))
 qcement.test <- window(qcement,
